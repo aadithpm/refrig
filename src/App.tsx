@@ -5,16 +5,18 @@ import {
   Button, 
   Box, 
   Chip, 
-  OutlinedInput,
-  InputLabel,
-  FormControl
+  CircularProgress,
+  Paper
 } from '@mui/material'
+import { getApiUrl } from './utils/api'
 import './App.scss'
 
 function App() {
   const [chips, setChips] = useState<string[]>([])
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [recipes, setRecipes] = useState('')
+  const [hasStartedSearch, setHasStartedSearch] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const parseMultipleWords = (text: string): string[] => {
@@ -45,11 +47,9 @@ function App() {
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Handle backspace when input is empty to remove last chip
     if (e.key === 'Backspace' && inputValue === '' && chips.length > 0) {
       setChips(prev => prev.slice(0, -1))
     }
-    // Handle Enter key
     if (e.key === 'Enter') {
       e.preventDefault()
       
@@ -76,20 +76,43 @@ function App() {
     }
     
     setIsLoading(true)
+    setRecipes('') // Clear previous recipes
+    setHasStartedSearch(true) // Show the results box
     
     try {
-      // Simulate API call with 5 second delay
-      await new Promise(resolve => setTimeout(resolve, 5000))
+      const itemsParam = chips.join(',')
+      const url = getApiUrl(`/api/recipes?items=${encodeURIComponent(itemsParam)}`)
       
-      // Log all ingredients
-      console.log('Ingredients for recipe search:', chips)
+      const eventSource = new EventSource(url, {
+        withCredentials: false
+      })
+
+      eventSource.onmessage = (event) => {
+        // Handle completion signal
+        if (event.data === "[DONE]") {
+          eventSource.close();
+          setIsLoading(false)
+          return;
+        }
+        
+        try {
+          const data = JSON.parse(event.data)
+          // Live update the recipes as data streams in
+          setRecipes(prev => prev + (data.response || ""))
+        } catch (parseError) {
+          console.warn('Non-JSON SSE data received:', event.data)
+          // Live update with raw data
+          setRecipes(prev => prev + event.data)
+        }
+      }
       
-      // Here you would typically make an actual API call
-      // const recipes = await fetchRecipes(chips)
-      
+      eventSource.onerror = (error) => {
+        console.error('SSE error:', error)
+        eventSource.close()
+        setIsLoading(false)
+      }
     } catch (error) {
-      console.error('Error finding recipes:', error)
-    } finally {
+      console.error('Error setting up recipe stream:', error)
       setIsLoading(false)
     }
   }
@@ -107,30 +130,28 @@ function App() {
         </Typography>
         
         <form onSubmit={handleSubmit} className="word-form">
-          <FormControl fullWidth variant="outlined" className="chip-input-container">
-            <InputLabel>Enter ingredients</InputLabel>
-            <OutlinedInput
-              label="Enter words"
-              value={inputValue}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              ref={inputRef}
-              className="chip-input"
-              startAdornment={
-                <Box className="chips-in-input">
-                  {chips.map((chip, index) => (
-                    <Chip
-                      key={`${chip}-${index}`}
-                      label={chip}
-                      onDelete={() => removeChip(chip)}
-                      size="small"
-                      className="inline-chip"
-                    />
-                  ))}
-                </Box>
-              }
-            />
-          </FormControl>
+          <Box className="chip-input-wrapper">
+            <Box className="chip-input-label">Enter ingredients</Box>
+            <Box className="chips-and-input">
+              {chips.map((chip, index) => (
+                <Chip
+                  key={`${chip}-${index}`}
+                  label={chip}
+                  onDelete={() => removeChip(chip)}
+                  size="small"
+                  className="inline-chip"
+                />
+              ))}
+              <input
+                type="text"
+                value={inputValue}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                ref={inputRef}
+                className="inline-input"
+              />
+            </Box>
+          </Box>
           
           <Button 
             type="submit" 
@@ -142,6 +163,34 @@ function App() {
             {isLoading ? 'Finding Recipes...' : 'Find Recipes'}
           </Button>
         </form>
+
+        {/* Recipe results - shows once search starts */}
+        {hasStartedSearch && (
+          <Paper className="recipe-results" elevation={2}>
+            <Typography variant="h6" className="results-title">
+              Recipe Suggestions
+            </Typography>
+            <Box className="recipe-content">
+              {isLoading && recipes === '' ? (
+                <Box className="loading-container">
+                  <CircularProgress size={32} />
+                  <Typography variant="body2" sx={{ mt: 1 }}>
+                    Finding delicious recipes for you...
+                  </Typography>
+                </Box>
+              ) : (
+                <Typography variant="body1" component="pre" className="recipe-text">
+                  {recipes}
+                  {isLoading && (
+                    <Box component="span" className="typing-indicator">
+                      <CircularProgress size={16} sx={{ ml: 1 }} />
+                    </Box>
+                  )}
+                </Typography>
+              )}
+            </Box>
+          </Paper>
+        )}
       </Box>
     </Container>
   )
