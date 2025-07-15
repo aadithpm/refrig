@@ -9,6 +9,7 @@ import {
   Paper
 } from '@mui/material'
 import { getApiUrl } from './utils/api'
+import DarkModeToggle from './components/DarkModeToggle'
 import './App.scss'
 
 function App() {
@@ -118,8 +119,10 @@ function App() {
   }
 
   return (
-    <Container maxWidth="md" className="app-container">
-      <Box className="form-container">
+    <>
+      <DarkModeToggle />
+      <Container maxWidth="md" className="app-container">
+        <Box className="form-container">
         <Typography variant="h5" className="form-title">
           What can we cook with? 🍕🥗
         </Typography>
@@ -191,8 +194,9 @@ function App() {
             </Box>
           </Paper>
         )}
-      </Box>
-    </Container>
+        </Box>
+      </Container>
+    </>
   )
 }
 
